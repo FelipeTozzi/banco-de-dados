@@ -45,14 +45,19 @@ def realizar_transacao():
         # Exibir lista de usuários e permitir a escolha do usuário a ser atualizado
         user_id = escolher_usuario(cursor)
 
+        cursor.execute("""
+            START TRANSACTION
+        """)
+
         # Solicitar o novo valor de limite de crédito
         novo_limite = float(input("Digite o novo limite de crédito: ").strip())
 
         # Iniciar a transação desativando o autocommit
-        conn.autocommit = False
+        conn.autocommit = True
         print("\nIniciando a transação...")
 
         # Executar o update
+        
         cursor.execute("""
             UPDATE users
             SET limite_de_credito = %s
@@ -64,6 +69,7 @@ def realizar_transacao():
             # Confirmar a transação (COMMIT)
             conn.commit()
             print("Alteração confirmada e salva.")
+            cursor.execute(""" COMMIT """)
         else:
             # Reverter a transação (ROLLBACK)
             conn.rollback()
