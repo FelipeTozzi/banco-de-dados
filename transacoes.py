@@ -1,7 +1,5 @@
 import psycopg2
-from psycopg2 import sql
 
-# Função para obter a confirmação do usuário
 def get_user_confirmation():
     while True:
         response = input('Deseja confirmar a alteração? (s/n): ').strip().lower()
@@ -12,7 +10,6 @@ def get_user_confirmation():
         else:
             print("Resposta inválida. Por favor, digite 's' para sim ou 'n' para não.")
 
-# Função para exibir todos os usuários e permitir a seleção de um usuário pelo ID
 def escolher_usuario(cursor):
     cursor.execute("SELECT id, name, limite_de_credito FROM users;")
     users = cursor.fetchall()
@@ -31,57 +28,51 @@ def escolher_usuario(cursor):
         except ValueError:
             print("Entrada inválida. Por favor, insira um número.")
 
-# Função principal para realizar a transação
 def realizar_transacao():
-    # Conectar ao banco de dados
     try:
-        dsn = "dbname=teste user=postgres password=12345 host=172.18.199.237 port=3000"
+        dsn = "dbname=teste user=postgres password=12345 host=localhost port=3000"
         conn = psycopg2.connect(dsn)
 
-        # Ativar o autocommit no início para evitar problemas de sessão
-        conn.autocommit = True
+        conn.autocommit = False  # Controle de transação manual
         cursor = conn.cursor()
 
-        # Exibir lista de usuários e permitir a escolha do usuário a ser atualizado
         user_id = escolher_usuario(cursor)
 
-        cursor.execute("""
-            START TRANSACTION
-        """)
+        # Obter o limite de crédito inicial do usuário
+        cursor.execute("SELECT limite_de_credito FROM users WHERE id = %s;", (user_id,))
+        limite_inicial = cursor.fetchone()[0]
+        print(f"Limite de crédito inicial do usuário (ID {user_id}): {limite_inicial}")
 
-        # Solicitar o novo valor de limite de crédito
+        # Solicitar o novo limite de crédito
         novo_limite = float(input("Digite o novo limite de crédito: ").strip())
 
-        # Iniciar a transação desativando o autocommit
-        conn.autocommit = True
         print("\nIniciando a transação...")
 
-        # Executar o update
-        
+        # Executar o update condicional
         cursor.execute("""
             UPDATE users
             SET limite_de_credito = %s
-            WHERE id = %s;
-        """, (novo_limite, user_id))
+            WHERE id = %s AND limite_de_credito = %s;
+        """, (novo_limite, user_id, limite_inicial))
 
-        # Obter confirmação do usuário
-        if get_user_confirmation():
-            # Confirmar a transação (COMMIT)
-            conn.commit()
-            print("Alteração confirmada e salva.")
-            cursor.execute(""" COMMIT """)
+        # Verificar se o update foi bem-sucedido
+        if cursor.rowcount == 0:
+            print("Alteração cancelada: o limite de crédito foi modificado por outra transação.")
+            conn.rollback()  # Reverter a transação
         else:
-            # Reverter a transação (ROLLBACK)
-            conn.rollback()
-            print("Alteração cancelada.")
+            # Obter confirmação do usuário
+            if get_user_confirmation():
+                conn.commit()  # Confirmar a transação
+                print("Alteração confirmada e salva.")
+            else:
+                conn.rollback()  # Reverter a transação
+                print("Alteração cancelada.")
 
-        # Fechar o cursor e a conexão
         cursor.close()
         conn.close()
 
     except Exception as e:
         print("Ocorreu um erro:", e)
-        # Se houver erro, faz rollback e fecha a conexão
         if conn:
             conn.rollback()
         if conn:
